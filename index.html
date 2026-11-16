@@ -446,8 +446,8 @@
      service_role key は絶対にここに書かないでください）
    空のままだと、下のサンプル口コミを表示するプレビューモードになります。
    ============================================================ */
-const SUPABASE_URL = '';       // 例: 'https://abcdefghijklm.supabase.co'
-const SUPABASE_ANON_KEY = '';  // 例: 'eyJhbGciOi...'
+const SUPABASE_URL = 'https://gjbrwwmqffwobkbnxrzu.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_PrqUzcG-urJvIg7biuhZWg_pnoFoL96'; // publishable key（公開用）
 const USE_DB = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
 /* ============================================================
@@ -598,7 +598,11 @@ function renderVoices(){
 renderVoices();
 
 /* ---- Supabase (REST API) ---- */
-const sbHeaders = {apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY};
+// 新しい publishable key（sb_publishable_…）は apikey ヘッダーだけで送る。
+// 旧形式の anon key（JWT: eyJ…）のときだけ Authorization も付ける。
+const sbHeaders = SUPABASE_ANON_KEY.startsWith('eyJ')
+  ? {apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY}
+  : {apikey: SUPABASE_ANON_KEY};
 async function loadVoices(){
   try{
     const res = await fetch(SUPABASE_URL + '/rest/v1/voices?select=name,grade,project_id,body,created_at&order=created_at.desc&limit=100', {headers: sbHeaders});
