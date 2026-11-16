@@ -239,6 +239,9 @@
   .post input:focus,.post select:focus,.post textarea:focus{outline:none;border-color:var(--blue)}
   .post .note{font-size:.78rem;color:var(--muted)}
   .row2{display:grid;gap:12px;grid-template-columns:1fr 1fr}
+  .post-msg{font-size:.9rem;font-weight:700;color:var(--blue-deep)}
+  .post-msg.err{color:#c4372a}
+  .btn[disabled]{opacity:.6;pointer-events:none}
 
   /* ---------- parents ---------- */
   #parents{background:linear-gradient(180deg,#fff,var(--blue-mist))}
@@ -383,8 +386,10 @@
           </div>
           <label>参加したプロジェクト<select name="project" id="projSelect"></select></label>
           <label>感想<textarea name="text" rows="4" required maxlength="160" placeholder="参加してみてどうだった？（160字まで）"></textarea></label>
-          <p class="note">※この欄はプレビュー用です。投稿はこの端末のこの画面にのみ表示され、送信・保存はされません。</p>
-          <button class="btn" type="submit">口コミを追加する</button>
+          <input type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
+          <p class="note" id="postNote">※この欄はプレビュー用です。投稿はこの端末のこの画面にのみ表示され、送信・保存はされません。</p>
+          <button class="btn" type="submit" id="postBtn">口コミを送る</button>
+          <p class="post-msg" id="postMsg" role="status"></p>
         </form>
       </details>
     </div>
@@ -434,6 +439,17 @@
 </dialog>
 
 <script>
+/* ============================================================
+   Supabase 設定
+   Supabase の Project Settings → API にある値を貼り付けてください。
+   （anon public key はページに書いて大丈夫な公開用のキーです。
+     service_role key は絶対にここに書かないでください）
+   空のままだと、下のサンプル口コミを表示するプレビューモードになります。
+   ============================================================ */
+const SUPABASE_URL = '';       // 例: 'https://abcdefghijklm.supabase.co'
+const SUPABASE_ANON_KEY = '';  // 例: 'eyJhbGciOi...'
+const USE_DB = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+
 /* ============================================================
    プロジェクトデータ
    ※ 説明文はサンプルです。実際の内容に差し替えてください。
@@ -490,11 +506,12 @@ const PROJECTS = [
 ];
 
 /* ============================================================
-   生徒の口コミ
+   生徒の口コミ（Supabase 未設定時のプレビュー用）
    ※ 以下はレイアウト確認用のサンプル文です。
+      Supabase を設定すると、代わりに voices テーブルの承認済み口コミが表示されます。
       公開前に必ず、実際の生徒の声（本人・保護者の掲載許可済み）に差し替えてください。
    ============================================================ */
-const VOICES = [
+let VOICES = [
   {name:'H.S.', grade:'2年', project:'wajima', text:'現地の方の話を直接聞いて、ニュースで見ていたことが「自分ごと」になりました。帰ってからもチームで何ができるか話し合い続けています。'},
   {name:'R.K.', grade:'1年', project:'bunbougu', text:'自分のアイデアが試作品になったときは本当にうれしかった！企業の方からのフィードバックは厳しいけど、すごく勉強になります。'},
   {name:'M.T.', grade:'3年', project:'okinawa', text:'きれいな海の裏にある課題を知って、環境問題を本気で調べたくなりました。この経験が進路を考えるきっかけになりました。'},
@@ -560,14 +577,18 @@ function setFilter(f){
   filtersEl.querySelectorAll('.filter').forEach(b => b.setAttribute('aria-pressed', b.dataset.f === f));
   renderVoices();
 }
+let voiceState = USE_DB ? 'loading' : 'ready';
 function renderVoices(){
+  if (voiceState === 'loading'){ listEl.innerHTML = '<p class="lead">口コミを読み込んでいます…</p>'; return; }
+  if (voiceState === 'error'){ listEl.innerHTML = '<p class="lead">口コミを読み込めませんでした。時間をおいてもう一度開いてください。</p>'; return; }
   const list = VOICES.filter(v => current === 'all' || v.project === current);
   listEl.innerHTML = list.length ? list.map((v, i) => {
     const p = projById[v.project];
+    if (!p) return '';
     return `<article class="voice" style="animation-delay:${i*40}ms">
       <p>${esc(v.text)}</p>
       <footer>
-        <span class="avatar" style="background:${AV_COLORS[VOICES.indexOf(v) % AV_COLORS.length]}">${esc(v.name.charAt(0))}</span>
+        <span class="avatar" style="background:${AV_COLORS[(v.name.charCodeAt(0) || 0) % AV_COLORS.length]}">${esc(v.name.charAt(0))}</span>
         <span class="who"><b>${esc(v.name)}さん</b><span>${esc(v.grade)}</span></span>
         <span class="chip">${esc(p.place)}</span>
       </footer>
@@ -576,15 +597,67 @@ function renderVoices(){
 }
 renderVoices();
 
-/* ---- post form (local preview only) ---- */
+/* ---- Supabase (REST API) ---- */
+const sbHeaders = {apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY};
+async function loadVoices(){
+  try{
+    const res = await fetch(SUPABASE_URL + '/rest/v1/voices?select=name,grade,project_id,body,created_at&order=created_at.desc&limit=100', {headers: sbHeaders});
+    if (!res.ok) throw new Error(res.status + ' ' + await res.text());
+    const rows = await res.json();
+    VOICES = rows.map(r => ({name:r.name, grade:r.grade, project:r.project_id, text:r.body}));
+    voiceState = 'ready';
+  }catch(err){
+    console.error('口コミの読み込みに失敗:', err);
+    voiceState = 'error';
+  }
+  renderVoices();
+}
+async function submitVoice(v){
+  const res = await fetch(SUPABASE_URL + '/rest/v1/voices', {
+    method:'POST',
+    headers:{...sbHeaders, 'Content-Type':'application/json', Prefer:'return=minimal'},
+    body: JSON.stringify({name:v.name, grade:v.grade, project_id:v.project, body:v.text})
+  });
+  if (!res.ok) throw new Error(res.status + ' ' + await res.text());
+}
+if (USE_DB){
+  loadVoices();
+  document.getElementById('postNote').textContent = '※いただいた口コミは、先生が内容を確認してから掲載されます。個人が特定される情報（本名・住所など）は書かないでください。';
+}
+
+/* ---- post form ---- */
 document.getElementById('projSelect').innerHTML = PROJECTS.map(p => `<option value="${p.id}">${esc(p.place)}</option>`).join('');
-document.getElementById('voiceForm').addEventListener('submit', e => {
+const postMsg = document.getElementById('postMsg');
+const postBtn = document.getElementById('postBtn');
+document.getElementById('voiceForm').addEventListener('submit', async e => {
   e.preventDefault();
-  const fd = new FormData(e.target);
-  VOICES.unshift({name:fd.get('name').trim(), grade:fd.get('grade'), project:fd.get('project'), text:fd.get('text').trim()});
-  e.target.reset();
-  setFilter('all');
-  listEl.scrollIntoView({behavior:'smooth', block:'start'});
+  const form = e.target;
+  const fd = new FormData(form);
+  const v = {name:fd.get('name').trim(), grade:fd.get('grade'), project:fd.get('project'), text:fd.get('text').trim()};
+  postMsg.className = 'post-msg'; postMsg.textContent = '';
+  if (!v.name || !v.text) return;
+  if (fd.get('website')){ form.reset(); return; } // ボット対策（人には見えない欄）
+
+  if (!USE_DB){
+    // プレビューモード：この画面にだけ追加
+    VOICES.unshift(v);
+    form.reset();
+    setFilter('all');
+    listEl.scrollIntoView({behavior:'smooth', block:'start'});
+    return;
+  }
+  postBtn.disabled = true; postBtn.textContent = '送信中…';
+  try{
+    await submitVoice(v);
+    form.reset();
+    postMsg.textContent = 'ありがとうございます！先生が確認したあとに掲載されます。';
+  }catch(err){
+    console.error('口コミの送信に失敗:', err);
+    postMsg.className = 'post-msg err';
+    postMsg.textContent = '送信できませんでした。時間をおいてもう一度お試しください。';
+  }finally{
+    postBtn.disabled = false; postBtn.textContent = '口コミを送る';
+  }
 });
 
 /* ---- reveal on scroll ---- */

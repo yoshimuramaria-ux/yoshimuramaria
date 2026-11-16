@@ -5,6 +5,7 @@
 --
 --  ※ 口コミ・プロジェクト説明はすべてテスト用の見本です。
 --    本番前に削除する場合は、ファイル末尾の「テストデータの削除」を実行してください。
+--    （消えるのはテスト用の口コミだけ。プロジェクトと本物の口コミは残ります）
 -- ============================================================
 
 -- ---------- テーブル ----------
@@ -55,36 +56,37 @@ drop policy if exists "anyone can submit a voice" on public.voices;
 create policy "anyone can submit a voice" on public.voices
   for insert with check (is_approved = false and is_test = false);
 
--- ---------- テストデータ（入れ直し） ----------
-delete from public.voices   where is_test;
-delete from public.projects where is_test;
+-- ---------- データ（入れ直し） ----------
+-- プロジェクト一覧は本番でも使うので is_test = false（消さない）。
+-- 本物の口コミがプロジェクトにひもづくため、projects は削除せず上書きだけします。
+delete from public.voices where is_test;
 
 insert into public.projects (id, place, kind, title, summary, tags, flow, skills, theme, icon, sort_order, is_test) values
 ('wajima', '輪島', '地域・防災', '輪島の「これから」を一緒に考える',
  '石川県輪島市を訪れ、地域の方の話を聞きながら、まちの未来のためにできることを考えます。',
  array['フィールドワーク','防災','インタビュー'],
  array['輪島について事前に調べ、問いを立てる','現地を訪れ、地域の方にお話をうかがう','チームで課題を整理し、アクションを企画','学内外へ発表・発信する'],
- array['傾聴力','課題発見力','企画力'], 't-wajima', 'wave', 1, true),
+ array['傾聴力','課題発見力','企画力'], 't-wajima', 'wave', 1, false),
 ('okinawa', '沖縄', '平和・環境', '沖縄で、海と歴史から学ぶ',
  '沖縄の自然・文化・歴史に触れ、自分たちの暮らしとつながる問いを見つけて探究します。',
  array['探究','環境','平和学習'],
  array['沖縄の歴史・自然について事前学習','現地で見て、聞いて、感じる','気づきから探究テーマを設定','レポートやプレゼンにまとめて発表'],
- array['探究力','多角的な視点','表現力'], 't-okinawa', 'sun', 2, true),
+ array['探究力','多角的な視点','表現力'], 't-okinawa', 'sun', 2, false),
 ('bunbougu', '文房具', '商品企画', '中高生が本当にほしい文房具をつくる',
  'ユーザーである自分たちの目線で、新しい文房具のアイデアを考え、企画・試作・プレゼンに挑戦します。',
  array['ものづくり','マーケティング','プレゼン'],
  array['身の回りの「不便」をリサーチ','アンケートでニーズを調べる','アイデアを出し合い試作する','企業の方に向けて提案する'],
- array['発想力','データ活用','提案力'], 't-bunbougu', 'pen', 3, true),
+ array['発想力','データ活用','提案力'], 't-bunbougu', 'pen', 3, false),
 ('ashiya', '芦屋校舎', '空間デザイン', '自分たちの校舎を、自分たちでつくる',
  '毎日過ごす芦屋校舎を「もっと学びたくなる場所」にするため、使い方や空間づくりを考えて提案します。',
  array['デザイン','合意形成','学校づくり'],
  array['校舎の使われ方を観察・調査','生徒や先生の声を集める','改善プランを考えてデザイン','学校へ提案し、実現をめざす'],
- array['デザイン思考','協働力','合意形成力'], 't-ashiya', 'school', 4, true),
+ array['デザイン思考','協働力','合意形成力'], 't-ashiya', 'school', 4, false),
 ('ozu', '大津町', 'まちづくり', '大津町の魅力を、もっと多くの人へ',
  '熊本県大津町をフィールドに、まちの魅力や課題を調べ、若い世代ならではの発信方法を考えます。',
  array['地域活性','発信','フィールドワーク'],
  array['大津町の特徴を調べる','現地で人やお店を取材する','魅力を伝えるコンテンツを企画・制作','まちの方へ成果を発表する'],
- array['取材力','情報発信力','行動力'], 't-ozu', 'leaf', 5, true)
+ array['取材力','情報発信力','行動力'], 't-ozu', 'leaf', 5, false)
 on conflict (id) do update set
   place = excluded.place, kind = excluded.kind, title = excluded.title, summary = excluded.summary,
   tags = excluded.tags, flow = excluded.flow, skills = excluded.skills, theme = excluded.theme,
@@ -112,6 +114,5 @@ group by p.place, p.sort_order order by p.sort_order;
 -- ============================================================
 --  テストデータの削除（本番前に、ここだけ選択して実行）
 -- ------------------------------------------------------------
--- delete from public.voices   where is_test;
--- delete from public.projects where is_test;
+-- delete from public.voices where is_test;
 -- ============================================================
